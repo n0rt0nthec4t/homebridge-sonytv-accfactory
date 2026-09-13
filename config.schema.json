@@ -1,0 +1,159 @@
+{
+  "pluginAlias": "SonyTVAccfactory",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "SonyTVAccfactory",
+        "condition": "1=2"
+      },
+      "devices": {
+        "type": "array",
+        "items": {
+          "title": "TV",
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "placeholder": "TV host name or IP address"
+            },
+            "name": {
+              "title": "Description",
+              "type": "string",
+              "placeholder": "Optional label for this TV override",
+              "description": "Used only to identify this override in the plugin settings. It does not rename the TV in HomeKit."
+            },
+            "psk": {
+              "type": "string",
+              "placeholder": "Uses the default pre-shared key when blank"
+            },
+            "includeApplications": {
+              "type": "boolean"
+            },
+            "includeChannels": {
+              "type": "boolean"
+            }
+          },
+          "required": ["host"]
+        }
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "autoDiscover": {
+            "type": "boolean",
+            "default": true
+          },
+          "psk": {
+            "type": "string",
+            "default": "0000"
+          },
+          "pollInterval": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 2,
+            "maximum": 300
+          },
+          "discoveryInterval": {
+            "type": "integer",
+            "default": 60,
+            "minimum": 30,
+            "maximum": 3600
+          },
+          "includeApplications": {
+            "type": "boolean",
+            "default": false
+          },
+          "includeChannels": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    }
+  },
+  "layout": [
+    {
+      "type": "fieldset",
+      "title": "TVs",
+      "description": "Configure global settings or override them for specific TVs.",
+      "expandable": true,
+      "expanded": true,
+      "items": [
+        {
+          "key": "options.autoDiscover",
+          "title": "Automatically Discover TVs"
+        },
+        {
+          "type": "array",
+          "title": "Overrides",
+          "key": "devices",
+          "description": "Add a TV manually or override settings for a discovered TV using its host name or IP address.",
+          "buttonText": "Add TV Override",
+          "orderable": false,
+          "arrayItemTitle": "{{value.name || value.host || 'TV'}}",
+          "items": [
+            {
+              "key": "devices[].host",
+              "title": "Host"
+            },
+            {
+              "key": "devices[].name",
+              "title": "Description"
+            },
+            {
+              "key": "devices[].psk",
+              "title": "Pre-Shared Key"
+            },
+            {
+              "key": "devices[].includeApplications",
+              "title": "Include Applications"
+            },
+            {
+              "key": "devices[].includeChannels",
+              "title": "Include Channels"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Options",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "key": "options.psk",
+          "title": "Default Pre-Shared Key",
+          "description": "Used for discovered TVs and TV overrides without their own key."
+        },
+        {
+          "key": "options.pollInterval",
+          "title": "Polling Interval",
+          "description": "Seconds between TV status updates."
+        },
+        {
+          "key": "options.discoveryInterval",
+          "title": "Discovery Interval",
+          "description": "Seconds between network searches for new TVs."
+        },
+        {
+          "key": "options.includeApplications",
+          "title": "Include Applications as Inputs"
+        },
+        {
+          "key": "options.includeChannels",
+          "title": "Include Channels",
+          "description": "May create many inputs on TVs with a large channel list."
+        }
+      ]
+    }
+  ]
+}

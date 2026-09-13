@@ -1,0 +1,59 @@
+{
+  "name": "homebridge-sonytv-accfactory",
+  "displayName": "Sony TV Accfactory",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "Homebridge platform plugin for Sony BRAVIA Android and Google TVs",
+  "author": "n0rt0nthec4t",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/n0rt0nthec4t/homebridge-sonytv-accfactory#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n0rt0nthec4t/homebridge-sonytv-accfactory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/n0rt0nthec4t/homebridge-sonytv-accfactory/issues"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "homekit",
+    "sony",
+    "bravia",
+    "android-tv",
+    "google-tv"
+  ],
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^22 || ^24 || ^26",
+    "homebridge": "^1.11.4 || ^2.4.0"
+  },
+  "files": [
+    "LICENSE",
+    "dist/**/*",
+    "config.schema.json",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "format": "prettier --write \"{src,test}/**/*.{js,mjs}\" && eslint --fix \"src/**/*.{js,mjs}\" \"test/**/*.js\"",
+    "lint": "eslint \"src/**/*.{js,mjs}\" \"test/**/*.js\" --max-warnings=20",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "check": "npm run lint && npm test && npm run build",
+    "build": "npm run clean && copyfiles -u 1 src/*.js dist && copyfiles -u 1 src/HomeKitDevice/HomeKitDevice.js dist",
+    "prepublishOnly": "npm run format && npm run lint && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@homebridge/hap-nodejs": "^2.2.2",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^26.5.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "copyfiles": "^2.4.1",
+    "eslint": "^10.10.0",
+    "homebridge": "^1.11.4 || ^2.4.0",
+    "prettier": "^3.9.6",
+    "rimraf": "^6.0.0"
+  }
+}
