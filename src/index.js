@@ -15,7 +15,7 @@
 
 // Import our modules
 import SonyTVAccfactory from './system.js';
-import HomeKitDevice from './HomeKitDevice/HomeKitDevice.js';
+import HomeKitDevice from './HomeKitDevice.js';
 HomeKitDevice.PLUGIN_NAME = 'homebridge-sonytv-accfactory';
 HomeKitDevice.PLATFORM_NAME = 'SonyTVAccfactory';
 // HomeKitDevice.LOGGER will be set by the system class constructor

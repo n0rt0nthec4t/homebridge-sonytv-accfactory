@@ -7,7 +7,7 @@
 // Responsibilities:
 // - Apply discovery and polling defaults
 // - Bound configured timer intervals
-// - Normalise manual TV entries and per-device overrides
+// - Normalise manual TV entries, per-device overrides, and exclusions
 // - Warn when configuration cannot yield any devices
 //
 // Code version 2026.09.11
@@ -44,6 +44,7 @@ export function processConfig(config = {}, log = undefined) {
           device?.includeChannels === true || device?.includeChannels === false
             ? device.includeChannels
             : options?.includeChannels === true,
+        exclude: device.exclude === true,
       })),
   };
 

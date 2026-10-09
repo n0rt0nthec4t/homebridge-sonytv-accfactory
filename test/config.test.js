@@ -17,11 +17,11 @@ test('processConfig supplies compatible defaults', () => {
 test('processConfig validates and normalises manual devices', () => {
   let config = processConfig({
     options: { pollInterval: 1, discoveryInterval: 5, includeChannels: true },
-    devices: [{ host: ' tv.local ', name: ' Lounge ', includeApplications: true }, { name: 'Missing host' }],
+    devices: [{ host: ' tv.local ', name: ' Lounge ', includeApplications: true, exclude: true }, { name: 'Missing host' }],
   });
   assert.equal(config.options.pollInterval, 2);
   assert.equal(config.options.discoveryInterval, 30);
   assert.deepEqual(config.devices, [
-    { host: 'tv.local', name: 'Lounge', psk: undefined, includeApplications: true, includeChannels: true },
+    { host: 'tv.local', name: 'Lounge', psk: undefined, includeApplications: true, includeChannels: true, exclude: true },
   ]);
 });

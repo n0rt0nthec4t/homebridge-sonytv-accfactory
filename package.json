@@ -2,7 +2,7 @@
   "name": "homebridge-sonytv-accfactory",
   "displayName": "Sony TV Accfactory",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Homebridge platform plugin for Sony BRAVIA Android and Google TVs",
   "author": "n0rt0nthec4t",
   "license": "Apache-2.0",
@@ -15,9 +15,10 @@
     "url": "https://github.com/n0rt0nthec4t/homebridge-sonytv-accfactory/issues"
   },
   "keywords": [
-    "homebridge-plugin",
-    "homebridge",
+    "apple home",
     "homekit",
+    "homebridge-plugin",
+    "supports-hap",
     "sony",
     "bravia",
     "android-tv",
@@ -37,23 +38,23 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "format": "prettier --write \"{src,test}/**/*.{js,mjs}\" && eslint --fix \"src/**/*.{js,mjs}\" \"test/**/*.js\"",
-    "lint": "eslint \"src/**/*.{js,mjs}\" \"test/**/*.js\" --max-warnings=20",
-    "test": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage",
+    "format": "prettier --write \"src/*.{js,mjs}\" \"test/**/*.{js,mjs}\" && eslint --fix \"src/*.{js,mjs}\" \"test/**/*.js\"",
+    "lint": "eslint \"src/*.{js,mjs}\" \"test/**/*.js\" --max-warnings=20",
+    "test": "npm run build && node --test test/*.test.js",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage test/*.test.js",
     "check": "npm run lint && npm test && npm run build",
-    "build": "npm run clean && copyfiles -u 1 src/*.js dist && copyfiles -u 1 src/HomeKitDevice/HomeKitDevice.js dist",
+    "build": "npm run clean && copyfiles -u 1 src/*.js dist && copyfiles -u 2 src/HomeKitDevice/HomeKitDevice.js dist && copyfiles -u 1 src/fetchWrapper/fetchWrapper.js dist",
     "prepublishOnly": "npm run format && npm run lint && npm test && npm run build"
   },
   "devDependencies": {
-    "@homebridge/hap-nodejs": "^2.2.2",
+    "@homebridge/hap-nodejs": "^2.2.3",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.5.1",
     "@typescript-eslint/parser": "^8.70.0",
     "copyfiles": "^2.4.1",
     "eslint": "^10.10.0",
     "homebridge": "^1.11.4 || ^2.4.0",
     "prettier": "^3.9.6",
-    "rimraf": "^6.0.0"
+    "rimraf": "^6.1.3"
   }
 }

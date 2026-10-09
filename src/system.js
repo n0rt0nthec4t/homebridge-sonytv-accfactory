@@ -9,9 +9,10 @@
 // - Inspect manually configured and automatically discovered TVs
 // - Deduplicate devices using Sony's stable serial number
 // - Apply global and per-TV configuration options
-// - Serve snapshot and command requests from tracked television modules
+// - Poll mutable television state and push HomeKitDevice UPDATE messages
+// - Serve command requests from tracked television modules
 // - Create or update HomeKitDevice-backed Television instances
-// - Release discovery and tracking resources during shutdown
+// - Release discovery, polling, and tracking resources during shutdown
 //
 // Notes:
 // - Discovery candidates are authenticated before accessories are created
@@ -22,14 +23,17 @@
 'use strict';
 
 // Import our modules
+import { clearInterval, setInterval } from 'node:timers';
+
 import { processConfig } from './config.js';
 import { startDiscovery } from './discovery.js';
-import HomeKitDevice from './HomeKitDevice/HomeKitDevice.js';
+import HomeKitDevice from './HomeKitDevice.js';
 import SonyClient from './sonyclient.js';
 import Television from './television.js';
 
 export default class SonyTVAccfactory {
   #browser; // Active SSDP discovery controller
+  #shuttingDown = false; // Prevent new polling and publication during shutdown
   #configuredByHost = new Map(); // Manual configuration overrides, keyed by host
   #inFlight = new Map(); // Active inspection promises, keyed by host
   #trackedDevices = new Map(); // Television modules, clients, and snapshot options, keyed by serial number
@@ -54,7 +58,7 @@ export default class SonyTVAccfactory {
         // Inspect configured televisions before optionally starting SSDP discovery.
         await Promise.allSettled(this.config.devices.map((device) => this.#setupTelevision(device.host, device)));
 
-        if (this.config.options.autoDiscover === true) {
+        if (this.config.options.autoDiscover === true && this.#shuttingDown === false) {
           this.#browser = startDiscovery({
             interval: this.config.options.discoveryInterval * 1000,
             onDevice: (candidate) => this.#handleDiscovered(candidate),
@@ -67,9 +71,18 @@ export default class SonyTVAccfactory {
       }
     });
 
-    api?.on?.('shutdown', () => {
+    api?.on?.('shutdown', async () => {
+      this.#shuttingDown = true;
+      for (let tracked of this.#trackedDevices.values()) {
+        clearInterval(tracked.timer);
+        tracked.timer = undefined;
+      }
       this.#browser?.stop();
       this.#browser = undefined;
+      // Drain network work before releasing accessory handlers and tracking.
+      await Promise.allSettled([...this.#inFlight.values()]);
+      await Promise.allSettled([...this.#trackedDevices.values()].map((tracked) => tracked.poll));
+      await Promise.allSettled([...this.#trackedDevices.values()].map((tracked) => tracked.device.shutdown()));
       this.#inFlight.clear();
       this.#trackedDevices.clear();
     });
@@ -108,6 +121,10 @@ export default class SonyTVAccfactory {
   }
 
   async #setupTelevision(host, overrides = {}) {
+    if (this.#shuttingDown === true) {
+      return;
+    }
+
     let client;
     try {
       client = new SonyClient(host, overrides.psk ?? this.config.options.psk);
@@ -128,16 +145,23 @@ export default class SonyTVAccfactory {
       };
       try {
         let deviceData = await client.snapshot(options);
+        if (this.#shuttingDown === true) {
+          return;
+        }
         deviceData = {
           ...deviceData,
           description: HomeKitDevice.makeValidHKName(deviceData.description),
           inputs: deviceData.inputs.map((input) => ({ ...input, title: HomeKitDevice.makeValidHKName(input.title) })),
-          pollInterval: this.config.options.pollInterval,
           includeApplications: options.includeApplications,
           includeChannels: options.includeChannels,
         };
         let serialNumber = deviceData.serialNumber;
         let trackedDevice = this.#trackedDevices.get(serialNumber);
+
+        if (trackedDevice === undefined && overrides.exclude === true) {
+          this?.log?.warn?.('Device "%s" is ignored due to it being marked as excluded', deviceData.description);
+          return;
+        }
 
         if (trackedDevice !== undefined) {
           trackedDevice.client.setHost(hostUrl);
@@ -147,7 +171,6 @@ export default class SonyTVAccfactory {
             ...deviceData,
             description: trackedDevice.device.deviceData.description,
             inputs: trackedDevice.device.deviceData.inputs,
-            pollInterval: trackedDevice.device.deviceData.pollInterval,
             includeApplications: trackedDevice.device.deviceData.includeApplications,
             includeChannels: trackedDevice.device.deviceData.includeChannels,
           });
@@ -155,18 +178,7 @@ export default class SonyTVAccfactory {
         }
 
         let television = new Television(undefined, this.api, deviceData);
-        trackedDevice = { device: television, client };
-
-        // Television timers request only mutable state through GET. The heavier
-        // identity and input inventory remains part of initial inspection.
-        HomeKitDevice.message(television.uuid, HomeKitDevice.GET, async () => {
-          try {
-            return await trackedDevice.client.status({ inputs: trackedDevice.device.deviceData.inputs });
-          } catch (error) {
-            this?.log?.debug?.('Unable to poll Sony TV "%s": %s', television.deviceData.description, error.message);
-            return { online: false };
-          }
-        });
+        trackedDevice = { device: television, client, timer: undefined, poll: undefined };
 
         // Route commands emitted by the television through its current client.
         HomeKitDevice.message(television.uuid, HomeKitDevice.SET, async (values) => {
@@ -185,6 +197,7 @@ export default class SonyTVAccfactory {
         }
 
         this.#trackedDevices.set(serialNumber, trackedDevice);
+        this.#startPolling(trackedDevice);
         this?.log?.debug?.('Sony TV "%s" found at %s', deviceData.description, hostUrl);
         return television;
       } catch (error) {
@@ -194,6 +207,39 @@ export default class SonyTVAccfactory {
 
     this.#inFlight.set(hostUrl, operation);
     return operation;
+  }
+
+  #startPolling(tracked) {
+    if (this.#shuttingDown === true || tracked.timer !== undefined) {
+      return;
+    }
+
+    // Match Denon and Daikin: each client is polled by the core independently.
+    // A slow TV skips its next tick without blocking updates to other TVs.
+    tracked.timer = setInterval(() => {
+      if (this.#shuttingDown === true || tracked.poll !== undefined) {
+        return;
+      }
+      tracked.poll = (async () => {
+        let deviceData;
+        try {
+          deviceData = await tracked.client.status({ inputs: tracked.device.deviceData.inputs });
+        } catch (error) {
+          this?.log?.debug?.('Unable to poll Sony TV "%s": %s', tracked.device.deviceData.description, error.message);
+          deviceData = { online: false };
+        }
+        // An in-flight request may finish after shutdown has stopped polling.
+        if (this.#shuttingDown === false) {
+          await HomeKitDevice.message(tracked.device.uuid, HomeKitDevice.UPDATE, deviceData);
+        }
+      })()
+        .catch((error) => this?.log?.warn?.('Unable to update Sony TV: %s', error.message))
+        .finally(() => {
+          tracked.poll = undefined;
+        });
+      return tracked.poll;
+    }, this.config.options.pollInterval * 1000);
+    tracked.timer?.unref?.();
   }
 
   async #set(client, values) {

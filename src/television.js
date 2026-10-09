@@ -8,25 +8,24 @@
 // - Create and update HomeKit television and speaker services
 // - Build a stable startup-only physical, tuner, application, and channel input list
 // - Route HomeKit power, input, volume, mute, and remote commands
-// - Request and apply periodic device data updates through HomeKitDevice
+// - Apply state updates pushed by the core through HomeKitDevice
 //
 // Notes:
 // - Input identifiers retain the CRC32 scheme used by the original accessory
 // - Network commands are routed through the HomeKitDevice SET handler
-// - Sony network access remains behind the HomeKitDevice GET and SET handlers
+// - Sony network access remains in the core and its HomeKitDevice SET handler
 //
 // Code version 2026.09.14
 // Mark Hulskamp
 'use strict';
 
 // Import our modules
-import HomeKitDevice from './HomeKitDevice/HomeKitDevice.js';
+import HomeKitDevice from './HomeKitDevice.js';
 import { crc32 } from './utils.js';
 
 export default class Television extends HomeKitDevice {
   static TYPE = 'television';
   static VERSION = '2026.09.14';
-  static STATUS_TIMER = 'status';
   static MAX_INPUTS = 85;
 
   static INPUT_TYPES = {
@@ -137,12 +136,6 @@ export default class Television extends HomeKitDevice {
     // stable InputSource services already cached by Homebridge.
     this.#setupInputs(this.deviceData.inputs);
 
-    // Request a fresh TV snapshot at the configured interval. HomeKitDevice
-    // prevents overlapping timer executions and clears the timer on teardown.
-    this.addTimer(Television.STATUS_TIMER, {
-      interval: (Number.isInteger(this.deviceData?.pollInterval) === true ? this.deviceData.pollInterval : 5) * 1000,
-    });
-
     this.postSetupDetail('Host "%s"', this.deviceData.host, 'debug');
     this.postSetupDetail('%d television input(s)', this.deviceData.inputs.length);
   }
@@ -187,20 +180,6 @@ export default class Television extends HomeKitDevice {
     );
     this.speakerService.updateCharacteristic(this.hap.Characteristic.Volume, deviceData.volume);
     this.speakerService.updateCharacteristic(this.hap.Characteristic.Mute, deviceData.mute);
-  }
-
-  async onTimer(message) {
-    // Ignore timers owned by other behaviours on this television.
-    if (message?.timer !== Television.STATUS_TIMER) {
-      return;
-    }
-
-    // Ask the platform's GET handler for a fresh Sony snapshot, then route it
-    // through UPDATE so state merging and characteristic updates stay uniform.
-    let deviceData = await this.get();
-    if (deviceData?.constructor === Object) {
-      await this.update(deviceData);
-    }
   }
 
   async setPower(value) {

@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { crc32, fetchWrapper, scaleValue } from '../src/utils.js';
+import { fetchWrapper } from '../src/fetchWrapper/fetchWrapper.js';
+import { crc32, scaleValue } from '../src/utils.js';
 
 test('crc32 returns a stable unsigned identifier', () => {
   assert.equal(crc32('extInput:hdmi?port=1'), 3322201961);
@@ -26,12 +27,12 @@ test('fetchWrapper serialises JSON through the fetch boundary', async () => {
 
   let response;
   try {
-    response = await fetchWrapper('post', 'http://bravia.local/sony/system', { timeout: 5000 }, { method: 'getPowerStatus' });
+    response = await fetchWrapper(fetchWrapper.POST, 'http://bravia.local/sony/system', { timeout: 5000 }, { method: 'getPowerStatus' });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
   assert.equal(response.status, 200);
-  assert.equal(received.options.headers['Content-Type'], 'application/json');
+  assert.equal(received.options.headers.get('Content-Type'), 'application/json');
   assert.equal(received.options.body, '{"method":"getPowerStatus"}');
 });

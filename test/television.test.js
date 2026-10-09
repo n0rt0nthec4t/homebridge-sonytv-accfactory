@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as hap from '@homebridge/hap-nodejs';
 
-import HomeKitDevice from '../src/HomeKitDevice/HomeKitDevice.js';
-import Television from '../src/television.js';
+import HomeKitDevice from '../dist/HomeKitDevice.js';
+import Television from '../dist/television.js';
 
 test('Television prepares a stable bounded input topology', () => {
   let inputs = [
@@ -20,7 +20,10 @@ test('Television prepares a stable bounded input topology', () => {
 
   assert.equal(ordered.length, Television.MAX_INPUTS);
   assert.deepEqual(ordered.slice(0, 4), ['physical:a', 'physical:z', 'tuner:z', 'app:z']);
-  assert.deepEqual(Television.prepareInputs([...inputs].reverse()).map((input) => input.uri), ordered);
+  assert.deepEqual(
+    Television.prepareInputs([...inputs].reverse()).map((input) => input.uri),
+    ordered,
+  );
   assert.equal(inputs[0].uri, 'physical:z');
 });
 
@@ -77,7 +80,7 @@ test('Television creates the expected HAP services through HomeKitDevice', async
     assert.ok(television.accessory.getService(hap.Service.TelevisionSpeaker));
     assert.equal(television.accessory.services.filter((service) => service.UUID === hap.Service.InputSource.UUID).length, 1);
     assert.equal(television.accessory.context?.inputSettings, undefined);
-    assert.equal(television.hasTimer('status'), true);
+    assert.equal(television.hasTimer('status'), false);
 
     let originalInput = television.accessory.services.find((service) => service.UUID === hap.Service.InputSource.UUID);
     originalInput.updateCharacteristic(hap.Characteristic.ConfiguredName, 'My Apple TV');

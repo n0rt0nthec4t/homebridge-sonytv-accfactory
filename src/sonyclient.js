@@ -15,7 +15,7 @@
 // - Unsupported endpoints do not prevent other television capabilities loading
 // - System information is required because it supplies the stable accessory identity
 //
-// Code version 2026.09.11
+// Code version 2026.09.17
 // Mark Hulskamp
 'use strict';
 
@@ -23,7 +23,8 @@
 import { URL } from 'node:url';
 
 // Import our modules
-import { fetchWrapper, scaleValue } from './utils.js';
+import { fetchWrapper } from './fetchWrapper/fetchWrapper.js';
+import { scaleValue } from './utils.js';
 
 // Define the Sony service, method, parameters, and API version used to build a
 // complete television snapshot. Each entry is passed directly to request().
@@ -97,7 +98,7 @@ export default class SonyClient {
   async request(service, method, params = [''], version = '1.0', extraHeaders = {}) {
     // Sony uses JSON-RPC-style bodies over HTTP POST for both reads and writes.
     let response = await fetchWrapper(
-      'post',
+      fetchWrapper.POST,
       new URL('/sony/' + service, this.baseUrl).href,
       {
         headers: { 'X-Auth-PSK': this.psk, ...extraHeaders },
@@ -136,7 +137,7 @@ export default class SonyClient {
     // SOAPAction identifies the IRCC operation and the PSK authenticates the
     // request in the same way as the JSON-RPC endpoints.
     let response = await fetchWrapper(
-      'post',
+      fetchWrapper.POST,
       new URL('/sony/IRCC', this.baseUrl).href,
       {
         headers: {
