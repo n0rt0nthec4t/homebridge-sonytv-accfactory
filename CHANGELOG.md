@@ -3,7 +3,21 @@
 All notable changes to `homebridge-sonytv-accfactory` are documented in this file.  
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## v0.0.2 (Unreleased)
+## v0.0.3 (2026/10/16)
+
+### Fixes
+
+- Serialised television publication to prevent duplicate accessories and leaked polling when host aliases report the same serial
+- Preserved rapid power, input, and mute write order without skipping commands against stale polled state
+- Reported failed Sony commands to HomeKit through the plugin's message dispatch boundary
+- Retried configured TVs unavailable at startup, including when automatic discovery is disabled
+
+### Dependency Updates
+
+- Updated `HomeKitDevice` from `2026.10.05` to `2026.10.09`
+- Updated `fetchWrapper` from `2026.09.21` to `2026.10.09`
+
+## v0.0.2 (2026/10/09)
 
 ### Fixes
 

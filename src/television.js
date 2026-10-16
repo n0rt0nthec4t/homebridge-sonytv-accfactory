@@ -15,7 +15,7 @@
 // - Network commands are routed through the HomeKitDevice SET handler
 // - Sony network access remains in the core and its HomeKitDevice SET handler
 //
-// Code version 2026.09.14
+// Code version 2026.10.09
 // Mark Hulskamp
 'use strict';
 
@@ -23,9 +23,15 @@
 import HomeKitDevice from './HomeKitDevice.js';
 import { crc32 } from './utils.js';
 
+/**
+ * A command routed to the core's Sony client.
+ * @typedef {object} SonyTVCommand
+ * @property {'setPower'|'setInput'|'changeVolume'|'setMute'|'sendIrcc'} command Client operation.
+ * @property {boolean|string} value Boolean power/mute/volume direction or input URI/IRCC code.
+ */
 export default class Television extends HomeKitDevice {
   static TYPE = 'television';
-  static VERSION = '2026.09.14';
+  static VERSION = '2026.10.09';
   static MAX_INPUTS = 85;
 
   static INPUT_TYPES = {
@@ -182,18 +188,37 @@ export default class Television extends HomeKitDevice {
     this.speakerService.updateCharacteristic(this.hap.Characteristic.Mute, deviceData.mute);
   }
 
+  /**
+   * Send a Sony command and report failed message handlers to HomeKit.
+   *
+   * @param {SonyTVCommand} values Sony command and protocol value.
+   * @param {...*} args Additional values forwarded to command handlers.
+   * @returns {Promise<void>} Resolves after the command is accepted.
+   * @throws {Error} HomeKit communication error when the command handler fails.
+   */
+  async set(values, ...args) {
+    if (values?.constructor !== Object) {
+      return;
+    }
+    // The shared set() API discards dispatch results. Use the message contract
+    // here so its false failure signal reaches the HomeKit write boundary.
+    let result = await this.message(HomeKitDevice.SET, values, ...args);
+    if (result === false) {
+      throw new this.hap.HapStatusError(this.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
   async setPower(value) {
     // Translate HomeKit's Active value into Sony's boolean power state.
     let power = value === this.hap.Characteristic.Active.ACTIVE;
-    if (power !== this.deviceData.power) {
-      await this.set({ command: 'setPower', value: power });
-    }
+    // Reported state may lag earlier writes; always deliver the requested state.
+    await this.set({ command: 'setPower', value: power });
   }
 
   async setInput(value) {
     // Resolve HomeKit's numeric identifier back to the Sony input URI.
     let input = this.deviceData.inputs.find((candidate) => this.#identifierForUri(candidate.uri) === value);
-    if (input !== undefined && input.uri !== this.deviceData.activeInput?.input) {
+    if (input !== undefined) {
       await this.set({ command: 'setInput', value: input.uri });
     }
   }
@@ -207,11 +232,9 @@ export default class Television extends HomeKitDevice {
   }
 
   async setMute(value) {
-    // Avoid sending a network command when the requested mute state is already active.
+    // A previous mute write may still be awaiting the next status poll.
     let mute = value === true;
-    if (mute !== this.deviceData.mute) {
-      await this.set({ command: 'setMute', value: mute });
-    }
+    await this.set({ command: 'setMute', value: mute });
   }
 
   accessSettings(value) {

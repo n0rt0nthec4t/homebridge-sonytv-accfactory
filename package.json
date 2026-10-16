@@ -2,7 +2,7 @@
   "name": "homebridge-sonytv-accfactory",
   "displayName": "Sony TV Accfactory",
   "type": "module",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Homebridge platform plugin for Sony BRAVIA Android and Google TVs",
   "author": "n0rt0nthec4t",
   "license": "Apache-2.0",

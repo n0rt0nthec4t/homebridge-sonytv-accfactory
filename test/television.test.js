@@ -14,7 +14,7 @@ test('Television prepares a stable bounded input topology', () => {
     { uri: 'app:z', type: 'APPLICATION' },
     { uri: 'tuner:z', type: 'TUNER' },
     { uri: 'physical:a', type: 'COMPOSITE' },
-    ...Array.from({ length: 90 }, (_, index) => ({ uri: `channel:${String(index).padStart(2, '0')}`, type: 'CHANNEL' })),
+    ...Array.from({ length: 90 }, (_, index) => ({ uri: 'channel:' + String(index).padStart(2, '0'), type: 'CHANNEL' })),
   ];
   let ordered = Television.prepareInputs(inputs).map((input) => input.uri);
 

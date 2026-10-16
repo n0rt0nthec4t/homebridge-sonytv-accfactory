@@ -57,7 +57,7 @@ Manual entries are useful when multicast discovery is unavailable. They also act
 The optional `name` value labels an override in the plugin settings only; the HomeKit television name comes from the TV.
 Set `exclude` to `true` on an override to prevent that TV from being published, including when automatic discovery finds it.
 
-The core polls each TV at `pollInterval` seconds and pushes reported state to its HomeKit accessory. Slow polls skip overlapping requests, and polling stops during shutdown.
+The core polls each TV at `pollInterval` seconds and pushes reported state to its HomeKit accessory. Slow polls skip overlapping requests, and polling stops during shutdown. Configured TVs unavailable at startup are retried every `discoveryInterval` seconds, including when automatic discovery is disabled.
 
 Inputs are discovered once during startup and are not changed while Homebridge is running. The plugin rebuilds up to 85 inputs on restart in a deterministic order: physical inputs, tuners, applications, then channels, sorted within each group by Sony URI.
 

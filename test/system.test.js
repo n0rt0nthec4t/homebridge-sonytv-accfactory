@@ -156,9 +156,11 @@ test('core polling pushes state, skips overlaps, recovers failures, and stops on
     pending = poll();
     let updateCount = updates.length;
     let stopped = false;
-    let shutdown = events.get('shutdown')[0]().then(() => {
-      stopped = true;
-    });
+    let shutdown = events
+      .get('shutdown')[0]()
+      .then(() => {
+        stopped = true;
+      });
     assert.equal(cleared, true);
     await poll();
     assert.equal(stopped, false);

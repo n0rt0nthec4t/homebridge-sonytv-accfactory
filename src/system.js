@@ -18,7 +18,7 @@
 // - Discovery candidates are authenticated before accessories are created
 // - Missing SSDP replies never remove a previously known television
 //
-// Code version 2026.09.12
+// Code version 2026.10.09
 // Mark Hulskamp
 'use strict';
 
@@ -34,9 +34,12 @@ import Television from './television.js';
 export default class SonyTVAccfactory {
   #browser; // Active SSDP discovery controller
   #shuttingDown = false; // Prevent new polling and publication during shutdown
+  #publishQueue = Promise.resolve(); // Serialize publication and rediscovery updates by identity
+  #pendingHosts = new Set(); // Configured hosts that still need initial publication
+  #retryTimer; // Retry configured TVs that were unavailable at startup
   #configuredByHost = new Map(); // Manual configuration overrides, keyed by host
   #inFlight = new Map(); // Active inspection promises, keyed by host
-  #trackedDevices = new Map(); // Television modules, clients, and snapshot options, keyed by serial number
+  #trackedDevices = new Map(); // Television modules, clients, polling, and command queues keyed by serial number
 
   constructor(log, config, api) {
     this.log = log;
@@ -48,6 +51,9 @@ export default class SonyTVAccfactory {
       try {
         let client = new SonyClient(device.host, device.psk ?? this.config.options.psk);
         this.#configuredByHost.set(client.baseUrl, device);
+        if (device.exclude !== true) {
+          this.#pendingHosts.add(client.baseUrl);
+        }
       } catch (error) {
         this?.log?.warn?.('Ignoring invalid Sony TV host "%s": %s', device.host, error.message);
       }
@@ -57,6 +63,24 @@ export default class SonyTVAccfactory {
       try {
         // Inspect configured televisions before optionally starting SSDP discovery.
         await Promise.allSettled(this.config.devices.map((device) => this.#setupTelevision(device.host, device)));
+
+        // Unpublished manual hosts have no status poll yet. Retry independently
+        // of SSDP so manual-only installations can recover after startup.
+        if (this.#pendingHosts.size > 0 && this.#shuttingDown === false) {
+          this.#retryTimer = setInterval(async () => {
+            if (this.#shuttingDown === true) {
+              return;
+            }
+            await Promise.allSettled(
+              [...this.#pendingHosts].map((host) => this.#setupTelevision(host, this.#configuredByHost.get(host))),
+            );
+            if (this.#pendingHosts.size === 0) {
+              clearInterval(this.#retryTimer);
+              this.#retryTimer = undefined;
+            }
+          }, this.config.options.discoveryInterval * 1000);
+          this.#retryTimer?.unref?.();
+        }
 
         if (this.config.options.autoDiscover === true && this.#shuttingDown === false) {
           this.#browser = startDiscovery({
@@ -73,6 +97,8 @@ export default class SonyTVAccfactory {
 
     api?.on?.('shutdown', async () => {
       this.#shuttingDown = true;
+      clearInterval(this.#retryTimer);
+      this.#retryTimer = undefined;
       for (let tracked of this.#trackedDevices.values()) {
         clearInterval(tracked.timer);
         tracked.timer = undefined;
@@ -81,10 +107,11 @@ export default class SonyTVAccfactory {
       this.#browser = undefined;
       // Drain network work before releasing accessory handlers and tracking.
       await Promise.allSettled([...this.#inFlight.values()]);
-      await Promise.allSettled([...this.#trackedDevices.values()].map((tracked) => tracked.poll));
+      await Promise.allSettled([...this.#trackedDevices.values()].flatMap((tracked) => [tracked.poll, tracked.commands]));
       await Promise.allSettled([...this.#trackedDevices.values()].map((tracked) => tracked.device.shutdown()));
       this.#inFlight.clear();
       this.#trackedDevices.clear();
+      this.#pendingHosts.clear();
     });
   }
 
@@ -145,61 +172,78 @@ export default class SonyTVAccfactory {
       };
       try {
         let deviceData = await client.snapshot(options);
-        if (this.#shuttingDown === true) {
-          return;
-        }
-        deviceData = {
-          ...deviceData,
-          description: HomeKitDevice.makeValidHKName(deviceData.description),
-          inputs: deviceData.inputs.map((input) => ({ ...input, title: HomeKitDevice.makeValidHKName(input.title) })),
-          includeApplications: options.includeApplications,
-          includeChannels: options.includeChannels,
-        };
-        let serialNumber = deviceData.serialNumber;
-        let trackedDevice = this.#trackedDevices.get(serialNumber);
-
-        if (trackedDevice === undefined && overrides.exclude === true) {
-          this?.log?.warn?.('Device "%s" is ignored due to it being marked as excluded', deviceData.description);
-          return;
-        }
-
-        if (trackedDevice !== undefined) {
-          trackedDevice.client.setHost(hostUrl);
-          // Preserve configured data and immutable inputs if the same serial is
-          // rediscovered at another host.
-          await HomeKitDevice.message(trackedDevice.device.uuid, HomeKitDevice.UPDATE, {
+        // Host aliases can report the same serial concurrently. Keep the
+        // identity lookup and awaited accessory add in one publication queue.
+        let publication = this.#publishQueue.then(async () => {
+          if (this.#shuttingDown === true) {
+            return;
+          }
+          deviceData = {
             ...deviceData,
-            description: trackedDevice.device.deviceData.description,
-            inputs: trackedDevice.device.deviceData.inputs,
-            includeApplications: trackedDevice.device.deviceData.includeApplications,
-            includeChannels: trackedDevice.device.deviceData.includeChannels,
+            description: HomeKitDevice.makeValidHKName(deviceData.description),
+            inputs: deviceData.inputs.map((input) => ({ ...input, title: HomeKitDevice.makeValidHKName(input.title) })),
+            includeApplications: options.includeApplications,
+            includeChannels: options.includeChannels,
+          };
+          let serialNumber = deviceData.serialNumber;
+          let trackedDevice = this.#trackedDevices.get(serialNumber);
+
+          if (trackedDevice === undefined && overrides.exclude === true) {
+            this?.log?.warn?.('Device "%s" is ignored due to it being marked as excluded', deviceData.description);
+            return;
+          }
+
+          if (trackedDevice !== undefined) {
+            trackedDevice.client.setHost(hostUrl);
+            // Preserve configured data and immutable inputs if the same serial is
+            // rediscovered at another host.
+            await HomeKitDevice.message(trackedDevice.device.uuid, HomeKitDevice.UPDATE, {
+              ...deviceData,
+              description: trackedDevice.device.deviceData.description,
+              inputs: trackedDevice.device.deviceData.inputs,
+              includeApplications: trackedDevice.device.deviceData.includeApplications,
+              includeChannels: trackedDevice.device.deviceData.includeChannels,
+            });
+            this.#pendingHosts.delete(hostUrl);
+            return trackedDevice.device;
+          }
+
+          let television = new Television(undefined, this.api, deviceData);
+          trackedDevice = { device: television, client, timer: undefined, poll: undefined, commands: Promise.resolve() };
+
+          // Route commands emitted by the television through its current client.
+          HomeKitDevice.message(television.uuid, HomeKitDevice.SET, async (values) => {
+            // Preserve HomeKit write order without poisoning later commands when
+            // one request fails. Return the original rejection to the message bus.
+            let command = trackedDevice.commands.then(async () => {
+              if (this.#shuttingDown === true) {
+                throw new Error('Sony TV platform is shutting down');
+              }
+              await this.#set(trackedDevice.client, values);
+            });
+            trackedDevice.commands = command.catch(() => {});
+            return command;
           });
-          return trackedDevice.device;
-        }
 
-        let television = new Television(undefined, this.api, deviceData);
-        trackedDevice = { device: television, client, timer: undefined, poll: undefined };
+          let added = await television.add({
+            hapAccessoryName: 'Sony Television',
+            hapCategory: this.api.hap.Categories.TELEVISION,
+            enableHistory: false,
+            externalPublish: true,
+          });
+          if (added !== true) {
+            await television.remove();
+            return;
+          }
 
-        // Route commands emitted by the television through its current client.
-        HomeKitDevice.message(television.uuid, HomeKitDevice.SET, async (values) => {
-          await this.#set(trackedDevice.client, values);
+          this.#trackedDevices.set(serialNumber, trackedDevice);
+          this.#startPolling(trackedDevice);
+          this.#pendingHosts.delete(hostUrl);
+          this?.log?.debug?.('Sony TV "%s" found at %s', deviceData.description, hostUrl);
+          return television;
         });
-
-        let added = await television.add({
-          hapAccessoryName: 'Sony Television',
-          hapCategory: this.api.hap.Categories.TELEVISION,
-          enableHistory: false,
-          externalPublish: true,
-        });
-        if (added !== true) {
-          await television.remove();
-          return;
-        }
-
-        this.#trackedDevices.set(serialNumber, trackedDevice);
-        this.#startPolling(trackedDevice);
-        this?.log?.debug?.('Sony TV "%s" found at %s', deviceData.description, hostUrl);
-        return television;
+        this.#publishQueue = publication.catch(() => {});
+        return await publication;
       } catch (error) {
         this?.log?.warn?.('Unable to connect to Sony TV at %s: %s', hostUrl, error.message);
       }
